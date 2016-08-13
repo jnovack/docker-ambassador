@@ -38,4 +38,15 @@ autorestart=true
 EOF
 done
 
-exec supervisord -n
+echo
+echo "/etc/hosts"
+echo "---------------------------"
+cat /etc/hosts
+
+echo
+echo "/etc/supervisor.d/socat.ini"
+echo "---------------------------"
+cat /etc/supervisor.d/socat.ini
+
+echo
+exec supervisord -n -c /etc/supervisord.conf
