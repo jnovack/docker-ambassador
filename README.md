@@ -7,12 +7,11 @@
 * Based on the Ambassador pattern: https://docs.docker.com/articles/ambassador_pattern_linking/
 * Based on alpine
 * Uses socat for relaying traffic
-  * socat SSL examples: http://go.kblog.us/2013/10/using-socat-to-create-connection-to.html
 * Uses supervisor for monitoring the socat processes
   * every tunnel is monitored individually
 
 
-mysql-client -> client-ambassador --> network --> server-ambassador -> mysql-server
+( mysql-client -> client-ambassador ) --> network --> ( server-ambassador -> mysql-server )
 
 
 ## Testing
