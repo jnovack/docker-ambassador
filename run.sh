@@ -19,9 +19,23 @@ env | grep _TCP= | while read line; do
     cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d -ls TCP4-LISTEN:\1,fork,reuseaddr TCP4:\2:\3 /')
   else
     if [ "$SSL_ENABLE" == "server" ]; then
-      cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d OPENSSL-LISTEN:\1,fork,reuseaddr,cert=\/etc\/server.pem,cafile=\/etc\/client.crt TCP4:\2:\3 /')
+      echo "[INFO] Initiating socat server..."
+      if [ -z "$CLIENT_PUBLIC_KEY" ]; then
+        echo "[WARN] ...server is NOT verifying certificates"
+        cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d OPENSSL-LISTEN:\1,fork,reuseaddr,cert=\/etc\/server.pem,verify=0 TCP4:\2:\3 /')
+      else
+        echo "[INFO] ...server is VERIFYING certificates"
+        cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d OPENSSL-LISTEN:\1,fork,reuseaddr,cert=\/etc\/server.pem,cafile=\/etc\/client.crt,verify=1 TCP4:\2:\3 /')
+      fi
     else
-      cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d TCP-LISTEN:\1,reuseaddr,fork OPENSSL:\2:\3,cert=\/etc\/client.pem,cafile=\/etc\/server.crt,verify=0 /')
+      echo "[INFO] Initiating socat client..."
+      if [ -z "$SERVER_PUBLIC_KEY" ]; then
+        echo "[WARN] ...client is NOT verifying certificates"
+        cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d TCP-LISTEN:\1,reuseaddr,fork OPENSSL:\2:\3,cert=\/etc\/client.pem,verify=0 /')
+      else
+        echo "[INFO] ...client is VERIFYING certificates"
+        cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d TCP-LISTEN:\1,reuseaddr,fork OPENSSL:\2:\3,cert=\/etc\/client.pem,cafile=\/etc\/server.crt,verify=1 /')
+      fi
     fi
   fi
 
@@ -35,6 +49,7 @@ stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 autostart=true
 autorestart=true
+
 EOF
 done
 
