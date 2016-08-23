@@ -1,7 +1,5 @@
 # Docker Ambassador with SSL capabilities
 
-## Overview
-
 * Based on https://github.com/bandesz/docker-ambassador
 * Based on https://github.com/md5/ctlc-docker-ambassador and https://github.com/zbyte64/stowaway-ssl-ambassador
 * Based on the Ambassador pattern: https://docs.docker.com/articles/ambassador_pattern_linking/
@@ -26,7 +24,8 @@ docker run --name mysql-server -e MYSQL_ROOT_PASSWORD=pass -d mysql
 ### Run server ambassador
 
 ```
-docker run -d --link mysql-server:mysql-server --name server-ambassador -p 3306:3306 jnovack/ambassador
+docker run -d --link mysql-server:mysql-server --name server-ambassador \
+        -p 3306:3306 jnovack/ambassador
 ```
 
 ### Run client ambassador
@@ -34,12 +33,14 @@ docker run -d --link mysql-server:mysql-server --name server-ambassador -p 3306:
 Use the server's ip instead of 1.2.3.4
 
 ```
-docker run -d --name client-ambassador --expose 3306 -e MYSQL_PORT_3306_TCP=tcp://1.2.3.4:3306 jnovack/ambassador
+docker run -d --name client-ambassador --expose 3306 \
+        -e MYSQL_PORT_3306_TCP=tcp://1.2.3.4:3306 jnovack/ambassador
 ```
 
 ### Run client (for simplicity I use the same docker image as for the server)
 ```
-docker run -it --link mysql-ambassador:mysql-server --name mysql-client mysql bash
+docker run -it --link mysql-ambassador:mysql-server \
+        --name mysql-client mysql bash
 ```
 
 
@@ -67,30 +68,28 @@ For enhanced security, copy `client.crt` to the client and provide `CLIENT_PUBLI
 ### Run server ambassador
 
 ```
-sudo docker run -d --name mysql-ambassador \
-            --link mysql-server:mysql-server -p 3306:3306 \
-            -e SERVER_PRIVATE_KEY="`cat server.pem`" \
-            -e SSL_ENABLE="server" \
-            -e CLIENT_PUBLIC_KEY="`cat client.crt`" \
-            jnovack/ambassador
+docker run -d --name mysql-ambassador \
+       --link mysql-server:mysql-server -p 3306:3306 \
+       -e SERVER_PRIVATE_KEY="`cat server.pem`" \
+       -e SSL_ENABLE="server" \
+       -e CLIENT_PUBLIC_KEY="`cat client.crt`" \
+       jnovack/ambassador
 ```
 
-If you provide `CLIENT_PUBLIC_KEY`, only clients matching in the `client.crt` file
-will be permitted to connect.
+If you provide `CLIENT_PUBLIC_KEY`, only clients with certificates matching in `client.crt` will be permitted to connect.
 
 If you do not provide `CLIENT_PUBLIC_KEY` any client may connect.
 
 ### Run client ambassador
 
 ```
-sudo docker run -d --name mysql-ambassador --expose 3306 \
-            -e MYSQL_PORT_3306_TCP=tcp://1.2.3.4:3306
-            -e CLIENT_PRIVATE_KEY="`cat client.pem`" -e SSL_ENABLE="client" \
-            -e SERVER_PUBLIC_KEY="`cat server.crt`" \
-            jnovack/ambassador
+docker run -d --name mysql-ambassador --expose 3306 \
+       -e MYSQL_PORT_3306_TCP=tcp://1.2.3.4:3306
+       -e CLIENT_PRIVATE_KEY="`cat client.pem`" -e SSL_ENABLE="client" \
+       -e SERVER_PUBLIC_KEY="`cat server.crt`" \
+       jnovack/ambassador
 ```
 
-If you provide a `SERVER_PUBLIC_KEY`, you will only be able to connect to the servers
-within `server.crt`.
+If you provide a `SERVER_PUBLIC_KEY`, you will only be able to connect to the servers with certificates in `server.crt`.
 
-If you do not provide `SERVER_PUBLIC_KEY`, then the server will not be verified.
+If you do not provide `SERVER_PUBLIC_KEY`, then the server will not be verified, but still encrypted.

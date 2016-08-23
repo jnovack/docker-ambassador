@@ -1,10 +1,11 @@
 FROM alpine:latest
+MAINTAINER Justin J. Novack <jnovack@gmail.com>
 
-RUN apk update && \
-    apk add --no-cache openssl socat supervisor
+RUN apk update
 
-ADD /run.sh /run.sh
-RUN mkdir /etc/supervisor.d/ && \
-    chmod 755 /run.sh
+ENTRYPOINT ["/usr/bin/entrypoint.sh"]
 
-CMD ["sh", "/run.sh"]
+RUN apk add --no-cache openssl socat supervisor
+
+COPY entrypoint.sh /usr/bin/entrypoint.sh
+RUN chmod 755 /usr/bin/entrypoint.sh
