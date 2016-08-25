@@ -4,26 +4,26 @@ if [ "$SSL" ]; then
   if [ "$SSL" == "server" ]; then
     if [ "$SERVER_PRIVATE_KEY" ]; then
       echo "$SERVER_PRIVATE_KEY" > /etc/server.pem
-      echo "$CLIENT_PUBLIC_KEY" > /etc/client.crt
     else
       echo "[WARN] Generating new keys..."
-      openssl req -nodes -new -x509 -keyout /etc/server.key -out /etc/server.crt -subj "/C=NO/ST=None/L=None/O=Testing/OU=Server/CN=server.rpi-ambassador.local/emailAddress=server@rpi-ambassador.local" &> /dev/null
+      openssl req -nodes -new -x509 -keyout /etc/server.key -out /etc/server.crt -subj "/C=NO/ST=None/L=None/O=Testing/OU=Server/CN=server.jnovack-ambassador.local/emailAddress=server@jnovack-ambassador.local" &> /dev/null
       cat /etc/server.key /etc/server.crt > /etc/server.pem
+      rm /etc/server.key
     fi
-    chmod 600 /etc/server.pem /etc/client.crt
+    chmod 600 /etc/server.pem
     echo
     echo ":: server.crt ::"
     cat /etc/server.crt
   else
     if [ "$CLIENT_PRIVATE_KEY" ]; then
       echo "$CLIENT_PRIVATE_KEY" > /etc/client.pem
-      echo "$SERVER_PUBLIC_KEY" > /etc/server.crt
     else
       echo "[WARN] Generating new keys..."
-      openssl req -nodes -new -x509 -keyout /etc/client.key -out /etc/client.crt -subj "/C=NO/ST=None/L=None/O=Testing/OU=Client/CN=client.rpi-ambassador.local/emailAddress=client@rpi-ambassador.local" &> /dev/null
+      openssl req -nodes -new -x509 -keyout /etc/client.key -out /etc/client.crt -subj "/C=NO/ST=None/L=None/O=Testing/OU=Client/CN=client.jnovack-ambassador.local/emailAddress=client@jnovack-ambassador.local" &> /dev/null
+      cat /etc/client.key /etc/client.crt > /etc/client.pem
+      rm /etc/client.key
     fi
-    cat /etc/client.key /etc/client.crt > /etc/client.pem
-    chmod 600 /etc/client.pem /etc/server.crt
+    chmod 600 /etc/client.pem
     echo
     echo ":: client.crt ::"
     cat /etc/client.crt
@@ -46,6 +46,8 @@ env | grep _TCP= | while read line; do
         echo "[WARN] ...server is NOT verifying certificates"
         cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d OPENSSL-LISTEN:\1,fork,reuseaddr,cert=\/etc\/server.pem,verify=0 TCP4:\2:\3 /')
       else
+        echo "$CLIENT_PUBLIC_KEY" > /etc/client.crt
+        chmod 600 /etc/client.crt
         echo "[INFO] ...server is VERIFYING certificates"
         cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d OPENSSL-LISTEN:\1,fork,reuseaddr,cert=\/etc\/server.pem,cafile=\/etc\/client.crt,verify=1 TCP4:\2:\3 /')
       fi
@@ -55,6 +57,8 @@ env | grep _TCP= | while read line; do
         echo "[WARN] ...client is NOT verifying certificates"
         cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d TCP-LISTEN:\1,reuseaddr,fork OPENSSL:\2:\3,cert=\/etc\/client.pem,verify=0 /')
       else
+        echo "$SERVER_PUBLIC_KEY" > /etc/server.crt
+        chmod 600 /etc/server.crt
         echo "[INFO] ...client is VERIFYING certificates"
         cmd=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -ls -d -d TCP-LISTEN:\1,reuseaddr,fork OPENSSL:\2:\3,cert=\/etc\/client.pem,cafile=\/etc\/server.crt,verify=1 /')
       fi
