@@ -2,23 +2,18 @@
 
 https://github.com/jnovack/docker-ambassador
 
-Docker Ambassador is a tiny Alpine-based ambassador container for
-tunnelling and optionally securing your client-server connections
-that are unable to otherwise communicate or secure.
-
+Docker Ambassador is a tiny Alpine-based ambassador container for tunnelling and optionally securing your client-server connections that are unable to otherwise communicate or secure.
 
 **Features**
 * alpine-based image
 * socat for relaying traffic
 * Uses supervisor for monitoring the socat processes
 
-
 **References**
 * https://github.com/bandesz/docker-ambassador
 * https://github.com/md5/ctlc-docker-ambassador
 * https://github.com/zbyte64/stowaway-ssl-ambassador
 * https://docs.docker.com/articles/ambassador_pattern_linking/
-
 
 ```
 ( client                            )                 ( server                            )
@@ -56,48 +51,31 @@ docker run -it --link mysql-ambassador:mysql-server \
 
 All environment variables are optional.
 
-* `SSL` - One of `server` or `client`. Intantiates the container as the
-client or server container in terms of SSL termination.
-* `SERVER_PRIVATE_KEY` - The server's concatinated private key and public
-certificate. Used on the server.
-* `SERVER_PUBLIC_KEY` - The server's public certificate.  Used on the client
-for server verification.
-* `CLIENT_PRIVATE_KEY` - The client's concatinated private key and public
-certificate. Used on the client.
-* `CLIENT_PUBLIC_KEY` - The client's public certificate.  Used on the server
-for client authentication.
+* `SSL` - One of `server` or `client`. Instantiates the container as the client or server container in terms of SSL termination.
+* `SERVER_PRIVATE_KEY` - The server's concatenated private key and public certificate. Used on the server.
+* `SERVER_PUBLIC_KEY` - The server's public certificate.  Used on the client for server verification.
+* `CLIENT_PRIVATE_KEY` - The client's concatenated private key and public certificate. Used on the client.
+* `CLIENT_PUBLIC_KEY` - The client's public certificate.  Used on the server for client authentication.
 
-If you provide a `SERVER_PUBLIC_KEY` to the client, you will only be able
-to connect to the servers with certificates in `server.crt`.
+If you provide a `SERVER_PUBLIC_KEY` to the client, you will only be able to connect to the servers with certificates in `server.crt`.
 
-If you do not provide `SERVER_PUBLIC_KEY` to the client, then the server
-will not be verified, but still encrypted.
+If you do not provide `SERVER_PUBLIC_KEY` to the client, then the server will not be verified, but still encrypted.
 
-If you provide `CLIENT_PUBLIC_KEY` to the server, only clients with
-certificates matching in `client.crt` will be permitted to connect. If you
-do not provide `CLIENT_PUBLIC_KEY` any client may connect.
+If you provide `CLIENT_PUBLIC_KEY` to the server, only clients with certificates matching in `client.crt` will be permitted to connect. If you do not provide `CLIENT_PUBLIC_KEY` any client may connect.
 
 You can `cat` multiple `client.crt`s together to allow for multiple clients.
 
-
 ## Enable SSL
 
-OpenSSL has been added to the image so you can secure, and optionally
-authenticate the connection.
+OpenSSL has been added to the image so you can secure, and optionally authenticate the connection.
 
-The container will automatically generate certificates if you do not pass
-any in through the environment when you add the `SSL` environment variable.
+The container will automatically generate certificates if you do not pass any in through the environment when you add the `SSL` environment variable.
 
-By default with SSL enabled, the connection is encrypted but it is not
-authenticated, not a big deal for your average tunnel session, but for
-enhanced security, it will print out the certificate so you can copy it
-to the other end.
+By default with SSL enabled, the connection is encrypted but it is not authenticated, not a big deal for your average tunnel session, but for enhanced security, it will print out the certificate so you can copy it to the other end.
 
-For server verfication, copy the server's `server.crt` to the client and
-provide `SERVER_PUBLIC_KEY` to the client ambassador.
+For server verification, copy the server's `server.crt` to the client and provide `SERVER_PUBLIC_KEY` to the client ambassador.
 
-For client authentication, copy the client's `client.crt` to the client
-and provide `CLIENT_PUBLIC_KEY` to the server ambassador.
+For client authentication, copy the client's `client.crt` to the client and provide `CLIENT_PUBLIC_KEY` to the server ambassador.
 
 Run server ambassador with SSL and client authentication:
 ```
@@ -108,7 +86,7 @@ docker run -d --name mysql-ambassador \
        jnovack/ambassador
 ```
 
-Run client ambassador with SSL and server verficiation:
+Run client ambassador with SSL and server verification:
 ```
 docker run -d --name mysql-ambassador --expose 3306 \
        -e MYSQL_PORT_3306_TCP=tcp://203.0.113.42:3306 -e SSL="client" \
