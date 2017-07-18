@@ -1,5 +1,7 @@
 # Docker Ambassador with SSL capabilities
 
+https://github.com/jnovack/docker-ambassador
+
 Docker Ambassador is a tiny Alpine-based ambassador container for
 tunnelling and optionally securing your client-server connections
 that are unable to otherwise communicate or secure.
