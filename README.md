@@ -15,10 +15,19 @@ Docker Ambassador is a tiny Alpine-based ambassador container for tunnelling and
 * https://github.com/zbyte64/stowaway-ssl-ambassador
 * https://docs.docker.com/articles/ambassador_pattern_linking/
 
-```
-( client                            )                 ( server                            )
-( mysql-client -> client-ambassador ) --> network --> ( server-ambassador -> mysql-server )
-                 [ ----------------- secure tunnelling ----------------- ]
+```mermaid
+flowchart LR
+ subgraph s1["server"]
+        sa["server-ambassador"]
+        serverapp["server-application"]
+  end
+ subgraph s2["client"]
+        clientapp["client-application"]
+        ca["client-ambassador"]
+  end
+    ca == 🔒 ==> sa
+    clientapp -.-> ca
+    sa -.-> serverapp
 ```
 
 
