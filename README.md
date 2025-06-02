@@ -9,11 +9,24 @@ Docker Ambassador is a tiny Alpine-based ambassador container for tunnelling and
 * socat for relaying traffic
 * Uses supervisor for monitoring the socat processes
 
-**References**
-* https://github.com/bandesz/docker-ambassador
-* https://github.com/md5/ctlc-docker-ambassador
-* https://github.com/zbyte64/stowaway-ssl-ambassador
-* https://docs.docker.com/articles/ambassador_pattern_linking/
+## What is an 'ambassador container'?
+
+An **ambassador container** is a type of sidecar container that acts as a proxy or intermediary between a main container
+and one or more external services. It can simplify and secure access to other services by handling tasks like
+authentication, encryption, and connection management so the main container doesn't need to worry about these details.
+
+This project aims to implement only the authentication and encryption portion as those functions can be ubiquitous.
+Features such as connection management and load balancing are not planned for this project.  This project is designed
+to secure a single service or conneciton.
+
+## Use
+
+The ambassador containers can, but do not need to, run on the same machine as the applications.
+
+### Example 1
+
+In this example, the ambassador containers are running as a sidecar on the same machine as the client application and
+server applications.
 
 ```mermaid
 flowchart LR
@@ -30,8 +43,33 @@ flowchart LR
     sa -.-> serverapp
 ```
 
+### Example 2
 
-## Example
+In this example, the ambassador containers are running as a service on separate machines from the client application and
+server applications.
+
+```mermaid
+flowchart LR
+  subgraph n1["remote network"]
+   subgraph s4["endpoint"]
+        sa["server-ambassador"]
+    end
+   subgraph s1["server"]
+        serverapp["server-application"]
+    end
+  end
+  subgraph n2["local network"]
+    subgraph s2["client"]
+        clientapp["client-application"]
+    end
+    subgraph s3["proxy"]
+        ca["client-ambassador"]
+    end
+  end
+    ca == 🔒 ==> sa
+    clientapp -.-> ca
+    sa -.-> serverapp
+```
 
 Run server service:
 ```
@@ -103,3 +141,11 @@ docker run -d --name mysql-ambassador --expose 3306 \
        -e SERVER_PUBLIC_KEY="`cat server.crt`" \
        jnovack/ambassador
 ```
+
+## References
+
+* https://github.com/bandesz/docker-ambassador
+* https://github.com/md5/ctlc-docker-ambassador
+* https://github.com/zbyte64/stowaway-ssl-ambassador
+* https://docs.docker.com/articles/ambassador_pattern_linking/
+
