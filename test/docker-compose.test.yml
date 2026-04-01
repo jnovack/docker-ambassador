@@ -6,6 +6,7 @@
 #   sut ──► client-b:11000 ────[TLS, no verify]────► server-b:11001 ────────► backend:5000  (B: auto-cert)
 #   sut ──► client-c:12000 ────[TLS, verify srv]───► server-c:12001 ────────► backend:5000  (C: server auth)
 #   sut ──► client-d:13000 ────[TLS, mutual]───────► server-d:13001 ────────► backend:5000  (D: mutual auth)
+#   sut ──► client-e:14000 ────[TLS, CA-signed]────► server-e:14001 ────────► backend:5000  (E: CA-signed client cert)
 #
 # The bootloader generates a server cert+key pair and a client cert+key pair,
 # then signals readiness via /certs/ready.  Services that need specific certs
@@ -46,6 +47,32 @@ services:
           -keyout /certs/client.key \
           -out    /certs/client.crt \
           -subj   "/C=NO/ST=None/L=None/O=Test/OU=Client/CN=client-ambassador" \
+          2>/dev/null
+        #
+        # Scenario E: CA-signed client cert verification.
+        # The server receives only the CA cert (not the specific client cert).
+        # Any client presenting a cert signed by this CA will be accepted.
+        openssl req -nodes -new -x509 -days 3650 \
+          -keyout /certs/ca.key \
+          -out    /certs/ca.crt \
+          -subj   "/C=NO/ST=None/L=None/O=Test/OU=CA/CN=test-ca" \
+          2>/dev/null
+        openssl req -nodes -new -x509 -days 3650 \
+          -keyout /certs/server-e.key \
+          -out    /certs/server-e.crt \
+          -subj   "/C=NO/ST=None/L=None/O=Test/OU=Server/CN=server-e" \
+          2>/dev/null
+        openssl req -nodes -new \
+          -keyout /certs/client-e.key \
+          -out    /certs/client-e.csr \
+          -subj   "/C=NO/ST=None/L=None/O=Test/OU=Client/CN=client-e" \
+          2>/dev/null
+        openssl x509 -req -days 3650 \
+          -in      /certs/client-e.csr \
+          -CA      /certs/ca.crt \
+          -CAkey   /certs/ca.key \
+          -CAcreateserial \
+          -out     /certs/client-e.crt \
           2>/dev/null
         chmod 600 /certs/*.key
         touch /certs/ready
@@ -223,6 +250,60 @@ services:
     networks:
       - testnet
 
+  # ── Scenario E: SSL, CA-signed client cert ───────────────────────────────
+  # server-e: SSL=server, provided server cert, CLIENT_PUBLIC_KEY_FILE points
+  #   to the CA cert (not a specific client cert). Any client whose cert was
+  #   signed by that CA is permitted — this is CA-based trust, not cert pinning.
+  # client-e: SSL=client, provided client cert signed by the CA, verifies
+  #   the server's self-signed cert.
+  server-e:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: server-e
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
+        export SERVER_PRIVATE_KEY_FILE=/certs/server-e.key
+        export SERVER_PUBLIC_CERT_FILE=/certs/server-e.crt
+        export CLIENT_PUBLIC_KEY_FILE=/certs/ca.crt
+        export SSL=server
+        export BACKEND_PORT_14001_TCP=tcp://backend:5000
+        exec /usr/bin/entrypoint.sh
+    volumes:
+      - certs:/certs
+    depends_on:
+      - bootloader
+      - backend
+    networks:
+      - testnet
+
+  client-e:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: client-e
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
+        export CLIENT_PRIVATE_KEY_FILE=/certs/client-e.key
+        export CLIENT_PUBLIC_CERT_FILE=/certs/client-e.crt
+        export SERVER_PUBLIC_KEY_FILE=/certs/server-e.crt
+        export SSL=client
+        export SERVERE_PORT_14000_TCP=tcp://server-e:14001
+        exec /usr/bin/entrypoint.sh
+    volumes:
+      - certs:/certs
+    depends_on:
+      - bootloader
+      - server-e
+    networks:
+      - testnet
+
   # ── sut (system under test) ───────────────────────────────────────────────
   # Waits for each ambassador to open its listen port, then sends a test string
   # through each scenario and asserts it echoes back unchanged.
@@ -246,6 +327,8 @@ services:
         while ! nc -z client-c    12000; do echo "[INFO ] waiting for client-c:12000...";    sleep 2; done
         while ! nc -z server-d    13001; do echo "[INFO ] waiting for server-d:13001...";    sleep 2; done
         while ! nc -z client-d    13000; do echo "[INFO ] waiting for client-d:13000...";    sleep 2; done
+        while ! nc -z server-e    14001; do echo "[INFO ] waiting for server-e:14001...";    sleep 2; done
+        while ! nc -z client-e    14000; do echo "[INFO ] waiting for client-e:14000...";    sleep 2; done
 
         # ── scenario A: plain TCP ─────────────────────────────────────────────
         result=$$(echo "scenario-a" | socat - TCP:client-a:7000)
@@ -283,6 +366,15 @@ services:
           exit 4
         fi
 
+        # ── scenario E: SSL, CA-signed client cert ────────────────────────────
+        result=$$(echo "scenario-e" | socat - TCP:client-e:14000)
+        if [ "$$result" = "scenario-e" ]; then
+          echo "[INFO ] scenario-e (SSL CA-signed client cert) PASS"
+        else
+          echo "[PANIC] scenario-e (SSL CA-signed client cert) FAIL — got: $$result"
+          exit 5
+        fi
+
         echo "[INFO ] all scenarios passed"
         exit 0
     depends_on:
@@ -293,6 +385,8 @@ services:
       - client-c
       - server-d
       - client-d
+      - server-e
+      - client-e
     networks:
       - testnet
 

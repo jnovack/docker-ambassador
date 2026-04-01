@@ -133,7 +133,8 @@ Both must be provided together, or neither (auto-generates a self-signed certifi
 * Using the bare env-var form (not `_FILE`) logs a **warning** and recommends switching to a file path (Docker secret or volume mount).
 * If `SERVER_PUBLIC_KEY[_FILE]` is omitted, the client encrypts but does not authenticate the server (MITM-vulnerable).
 * If `CLIENT_PUBLIC_KEY[_FILE]` is omitted, the server accepts any connecting client.
-* You can concatenate multiple certificates into a single file to permit more than one client.
+* `CLIENT_PUBLIC_KEY_FILE` accepts either a specific client certificate (pinning — only that cert is accepted) or a CA certificate (any client cert signed by that CA is accepted). The latter is the correct choice for multi-client deployments.
+* You can concatenate multiple CA certificates into a single file to trust multiple issuers.
 
 ## Enable SSL
 

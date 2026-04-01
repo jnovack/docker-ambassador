@@ -7,15 +7,21 @@ as the CI validation step on every release.
 ## Overview
 
 The ambassador container's only reason to exist is to proxy TCP connections with
-optional mutual TLS.  The tests therefore exercise all four meaningful operating
+optional mutual TLS.  The tests therefore exercise all five meaningful operating
 modes:
 
-| Scenario | SSL | Server cert | Client cert | Verify srv | Verify client |
-|----------|-----|-------------|-------------|------------|---------------|
-| A        | No  | —           | —           | —          | —             |
-| B        | Yes | auto-gen    | auto-gen    | no         | no            |
-| C        | Yes | provided    | provided    | yes        | no            |
-| D        | Yes | provided    | provided    | yes        | yes           |
+| Scenario | SSL | Server cert | Client cert      | Verify srv | Verify client       |
+|----------|-----|-------------|------------------|------------|---------------------|
+| A        | No  | —           | —                | —          | —                   |
+| B        | Yes | auto-gen    | auto-gen         | no         | no                  |
+| C        | Yes | provided    | provided         | yes        | no                  |
+| D        | Yes | provided    | provided (pinned)| yes        | yes (cert pinning)  |
+| E        | Yes | provided    | CA-signed        | yes        | yes (CA trust)      |
+
+Scenarios D and E both use mutual TLS but differ in how the server verifies the
+client: D pins a specific client certificate; E trusts any certificate issued by
+a known CA.  This distinction is important for multi-client deployments where
+issuing individual pinned certs per client is impractical.
 
 Each scenario independently verifies the full data path from the `sut` container
 through one or two ambassador containers to the `backend` echo server and back.
@@ -24,9 +30,10 @@ through one or two ambassador containers to the `backend` echo server and back.
 
 ```text
   sut ──► client-a:7000 ────────────────────────────────────────────────► backend:5000  (A)
-  sut ──► client-b:7002 ────[TLS, no verify]────► server-b:7001 ────────► backend:5000  (B)
-  sut ──► client-c:7004 ────[TLS, verify srv]───► server-c:7003 ────────► backend:5000  (C)
-  sut ──► client-d:7006 ────[TLS, mutual]───────► server-d:7005 ────────► backend:5000  (D)
+  sut ──► client-b:11000 ───[TLS, no verify]────► server-b:11001 ───────► backend:5000  (B)
+  sut ──► client-c:12000 ───[TLS, verify srv]───► server-c:12001 ───────► backend:5000  (C)
+  sut ──► client-d:13000 ───[TLS, mutual]───────► server-d:13001 ───────► backend:5000  (D)
+  sut ──► client-e:14000 ───[TLS, CA-signed]────► server-e:14001 ───────► backend:5000  (E)
 ```
 
 All containers share a single `testnet` bridge network (`203.0.113.0/24` is not
@@ -97,8 +104,29 @@ authentication.
   `CLIENT_PUBLIC_CERT_FILE=/certs/client.crt`,
   `SERVER_PUBLIC_KEY_FILE=/certs/server-d.crt` → verifies the server.
 
-Both peers present and verify certificates.  This is the highest-security
-operating mode.
+Both peers present and verify certificates.  The server pins the specific client
+certificate — only that exact certificate is accepted.
+
+### server-e / client-e (scenario E)
+
+Two ambassador instances demonstrating CA-based client certificate trust.
+
+- `server-e`: `SSL=server`, `SERVER_PRIVATE_KEY_FILE=/certs/server-e.key`,
+  `SERVER_PUBLIC_CERT_FILE=/certs/server-e.crt`,
+  `CLIENT_PUBLIC_KEY_FILE=/certs/ca.crt` — the CA certificate, **not** the
+  client's certificate. The server will accept any client whose certificate was
+  signed by this CA.
+- `client-e`: `SSL=client`, `CLIENT_PRIVATE_KEY_FILE=/certs/client-e.key`,
+  `CLIENT_PUBLIC_CERT_FILE=/certs/client-e.crt` (signed by the CA),
+  `SERVER_PUBLIC_KEY_FILE=/certs/server-e.crt` → verifies the server.
+
+The bootloader generates the CA with `openssl req -new -x509`, then signs the
+client cert with `openssl x509 -req -CA ca.crt -CAkey ca.key` rather than
+creating a self-signed cert.  This is the difference from scenario D: the
+client cert is not self-signed and not pinned — it derives trust from the CA.
+
+This mode is the correct choice when you have many clients or want to rotate
+client credentials without reconfiguring the server.
 
 ### sut
 
@@ -108,11 +136,12 @@ The System Under Test runner.  Waits for each ambassador's listen port to be ope
 
 Exit codes:
 
-- `0` — all four scenarios passed
+- `0` — all five scenarios passed
 - `1` — scenario A failed
 - `2` — scenario B failed
 - `3` — scenario C failed
 - `4` — scenario D failed
+- `5` — scenario E failed
 
 ## Running the tests
 
