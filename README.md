@@ -100,21 +100,40 @@ docker run -it --name mysql-client --network mynet \
 
 ## Environment Variables
 
-All environment variables are optional.
+* `SSL` — One of `server` or `client`. Sets the SSL role for this container.
 
-* `SSL` - One of `server` or `client`. Instantiates the container as the client or server container in terms of SSL termination.
-* `SERVER_PRIVATE_KEY` - The server's concatenated private key and public certificate. Used on the server.
-* `SERVER_PUBLIC_KEY` - The server's public certificate.  Used on the client for server verification.
-* `CLIENT_PRIVATE_KEY` - The client's concatenated private key and public certificate. Used on the client.
-* `CLIENT_PUBLIC_KEY` - The client's public certificate.  Used on the server for client authentication.
+### Server identity (used when `SSL=server`)
 
-If you provide a `SERVER_PUBLIC_KEY` to the client, you will only be able to connect to the servers with certificates in `server.crt`.
+| Variable | `_FILE` variant | Description |
+| --- | --- | --- |
+| `SERVER_PRIVATE_KEY` | `SERVER_PRIVATE_KEY_FILE` | Private key (PEM). Prefer the `_FILE` form with a path to a mounted secret. |
+| `SERVER_PUBLIC_CERT` | `SERVER_PUBLIC_CERT_FILE` | Public certificate (PEM). Must be provided together with the private key. |
 
-If you do not provide `SERVER_PUBLIC_KEY` to the client, then the server will not be verified, but still encrypted.
+Both must be provided together, or neither (auto-generates a self-signed certificate).
 
-If you provide `CLIENT_PUBLIC_KEY` to the server, only clients with certificates matching in `client.crt` will be permitted to connect. If you do not provide `CLIENT_PUBLIC_KEY` any client may connect.
+### Client identity (used when `SSL=client`)
 
-You can `cat` multiple `client.crt`s together to allow for multiple clients.
+| Variable | `_FILE` variant | Description |
+| --- | --- | --- |
+| `CLIENT_PRIVATE_KEY` | `CLIENT_PRIVATE_KEY_FILE` | Private key (PEM). Prefer the `_FILE` form with a path to a mounted secret. |
+| `CLIENT_PUBLIC_CERT` | `CLIENT_PUBLIC_CERT_FILE` | Public certificate (PEM). Must be provided together with the private key. |
+
+Both must be provided together, or neither (auto-generates a self-signed certificate).
+
+### Peer verification (optional, either role)
+
+| Variable | `_FILE` variant | Description |
+| --- | --- | --- |
+| `SERVER_PUBLIC_KEY` | `SERVER_PUBLIC_KEY_FILE` | CA cert used by the **client** to verify the server. Enables `verify=1` on the client side. |
+| `CLIENT_PUBLIC_KEY` | `CLIENT_PUBLIC_KEY_FILE` | CA cert used by the **server** to verify the client (mutual auth). Enables `verify=1` on the server side. |
+
+### Rules
+
+* Providing both `VAR` and `VAR_FILE` for the same credential is a **fatal error** — the container will refuse to start.
+* Using the bare env-var form (not `_FILE`) logs a **warning** and recommends switching to a file path (Docker secret or volume mount).
+* If `SERVER_PUBLIC_KEY[_FILE]` is omitted, the client encrypts but does not authenticate the server (MITM-vulnerable).
+* If `CLIENT_PUBLIC_KEY[_FILE]` is omitted, the server accepts any connecting client.
+* You can concatenate multiple certificates into a single file to permit more than one client.
 
 ## Enable SSL
 
@@ -127,29 +146,33 @@ By default with SSL enabled, the connection is encrypted but it is not authentic
 > [!WARNING]
 > It is trivial to execute a man-in-the-middle (MITM) attack unless you ensure you verify, at a minimum, the server certificate from the client.
 
-For server verification, copy the server's `server.crt` to the client and provide `SERVER_PUBLIC_KEY` to the client ambassador.
+For server verification, mount the server's `server.crt` into the client ambassador and set `SERVER_PUBLIC_KEY_FILE`.
 
-For client authentication, copy the client's `client.crt` to the client and provide `CLIENT_PUBLIC_KEY` to the server ambassador.
+For client authentication, mount the client's `client.crt` into the server ambassador and set `CLIENT_PUBLIC_KEY_FILE`.
 
 Run server ambassador with SSL and client authentication:
 
 ```sh
+# Server Ambassador
 docker run -d --name server-ambassador --network mynet \
        -e MYSQL_SERVER_PORT_3306_TCP=tcp://mysql-server:3306 \
        -e SSL="server" \
-       -e SERVER_PRIVATE_KEY="$(cat server.pem)" \
-       -e CLIENT_PUBLIC_KEY="$(cat client.crt)" \
+       -e SERVER_PRIVATE_KEY_FILE=/run/secrets/server.key \
+       -e SERVER_PUBLIC_CERT_FILE=/run/secrets/server.crt \
+       -e CLIENT_PUBLIC_KEY_FILE=/run/secrets/client.crt \
        -p 3306:3306 jnovack/ambassador
 ```
 
 Run client ambassador with SSL and server verification:
 
 ```sh
+# Client Ambassador
 docker run -d --name client-ambassador --network mynet --expose 3306 \
        -e MYSQL_PORT_3306_TCP=tcp://203.0.113.42:3306 \
        -e SSL="client" \
-       -e CLIENT_PRIVATE_KEY="$(cat client.pem)" \
-       -e SERVER_PUBLIC_KEY="$(cat server.crt)" \
+       -e CLIENT_PRIVATE_KEY_FILE=/run/secrets/client.key \
+       -e CLIENT_PUBLIC_CERT_FILE=/run/secrets/client.crt \
+       -e SERVER_PUBLIC_KEY_FILE=/run/secrets/server.crt \
        jnovack/ambassador
 ```
 

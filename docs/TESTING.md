@@ -65,10 +65,10 @@ A single ambassador instance with no `SSL` env var set.  Listens on plain TCP po
 
 Two ambassador instances, both using auto-generated certificates and `verify=0`.
 
-- `server-b`: `SSL=server`, no `SERVER_PRIVATE_KEY` → auto-generates, no
-  `CLIENT_PUBLIC_KEY` → does not verify the client.
-- `client-b`: `SSL=client`, no `CLIENT_PRIVATE_KEY` → auto-generates, no
-  `SERVER_PUBLIC_KEY` → does not verify the server.
+- `server-b`: `SSL=server`, no `SERVER_PRIVATE_KEY_FILE` / `SERVER_PUBLIC_CERT_FILE` → auto-generates, no
+  `CLIENT_PUBLIC_KEY_FILE` → does not verify the client.
+- `client-b`: `SSL=client`, no `CLIENT_PRIVATE_KEY_FILE` / `CLIENT_PUBLIC_CERT_FILE` → auto-generates, no
+  `SERVER_PUBLIC_KEY_FILE` → does not verify the server.
 
 The connection is encrypted but neither peer is authenticated.  This exercises
 the auto-cert generation code path.
@@ -77,10 +77,11 @@ the auto-cert generation code path.
 
 Two ambassador instances using bootloader-generated certificates.
 
-- `server-c`: `SSL=server`, `SERVER_PRIVATE_KEY` from `/certs/server.pem`, no
-  `CLIENT_PUBLIC_KEY` → does not require a client cert.
-- `client-c`: `SSL=client`, `CLIENT_PRIVATE_KEY` from `/certs/client.pem`,
-  `SERVER_PUBLIC_KEY` from `/certs/server.crt` → verifies the server.
+- `server-c`: `SSL=server`, `SERVER_PRIVATE_KEY_FILE=/certs/server-c.key`,
+  `SERVER_PUBLIC_CERT_FILE=/certs/server-c.crt`, no `CLIENT_PUBLIC_KEY_FILE` → does not require a client cert.
+- `client-c`: `SSL=client`, `CLIENT_PRIVATE_KEY_FILE=/certs/client.key`,
+  `CLIENT_PUBLIC_CERT_FILE=/certs/client.crt`,
+  `SERVER_PUBLIC_KEY_FILE=/certs/server-c.crt` → verifies the server.
 
 The client authenticates the server; the server accepts any connecting client.
 
@@ -89,10 +90,12 @@ The client authenticates the server; the server accepts any connecting client.
 Two ambassador instances using bootloader-generated certificates with full mutual
 authentication.
 
-- `server-d`: `SSL=server`, `SERVER_PRIVATE_KEY` from `/certs/server.pem`,
-  `CLIENT_PUBLIC_KEY` from `/certs/client.crt` → requires and verifies a client cert.
-- `client-d`: `SSL=client`, `CLIENT_PRIVATE_KEY` from `/certs/client.pem`,
-  `SERVER_PUBLIC_KEY` from `/certs/server.crt` → verifies the server.
+- `server-d`: `SSL=server`, `SERVER_PRIVATE_KEY_FILE=/certs/server-d.key`,
+  `SERVER_PUBLIC_CERT_FILE=/certs/server-d.crt`,
+  `CLIENT_PUBLIC_KEY_FILE=/certs/client.crt` → requires and verifies a client cert.
+- `client-d`: `SSL=client`, `CLIENT_PRIVATE_KEY_FILE=/certs/client.key`,
+  `CLIENT_PUBLIC_CERT_FILE=/certs/client.crt`,
+  `SERVER_PUBLIC_KEY_FILE=/certs/server-d.crt` → verifies the server.
 
 Both peers present and verify certificates.  This is the highest-security
 operating mode.

@@ -37,20 +37,17 @@ services:
           -out    /certs/server-c.crt \
           -subj   "/C=NO/ST=None/L=None/O=Test/OU=Server/CN=server-c" \
           2>/dev/null
-        cat /certs/server-c.key /certs/server-c.crt > /certs/server-c.pem
         openssl req -nodes -new -x509 -days 3650 \
           -keyout /certs/server-d.key \
           -out    /certs/server-d.crt \
           -subj   "/C=NO/ST=None/L=None/O=Test/OU=Server/CN=server-d" \
           2>/dev/null
-        cat /certs/server-d.key /certs/server-d.crt > /certs/server-d.pem
         openssl req -nodes -new -x509 -days 3650 \
           -keyout /certs/client.key \
           -out    /certs/client.crt \
           -subj   "/C=NO/ST=None/L=None/O=Test/OU=Client/CN=client-ambassador" \
           2>/dev/null
-        cat /certs/client.key /certs/client.crt > /certs/client.pem
-        chmod 600 /certs/*.pem /certs/*.key
+        chmod 600 /certs/*.key
         touch /certs/ready
         echo "[INFO ] certs generated"
         sleep 300
@@ -135,7 +132,8 @@ services:
       - -c
       - |
         while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
-        export SERVER_PRIVATE_KEY="$(cat /certs/server-c.pem)"
+        export SERVER_PRIVATE_KEY_FILE=/certs/server-c.key
+        export SERVER_PUBLIC_CERT_FILE=/certs/server-c.crt
         export SSL=server
         export BACKEND_PORT_12001_TCP=tcp://backend:5000
         exec /usr/bin/entrypoint.sh
@@ -157,8 +155,9 @@ services:
       - -c
       - |
         while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
-        export CLIENT_PRIVATE_KEY="$(cat /certs/client.pem)"
-        export SERVER_PUBLIC_KEY="$(cat /certs/server-c.crt)"
+        export CLIENT_PRIVATE_KEY_FILE=/certs/client.key
+        export CLIENT_PUBLIC_CERT_FILE=/certs/client.crt
+        export SERVER_PUBLIC_KEY_FILE=/certs/server-c.crt
         export SSL=client
         export SERVERC_PORT_12000_TCP=tcp://server-c:12001
         exec /usr/bin/entrypoint.sh
@@ -186,8 +185,9 @@ services:
       - -c
       - |
         while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
-        export SERVER_PRIVATE_KEY="$(cat /certs/server-d.pem)"
-        export CLIENT_PUBLIC_KEY="$(cat /certs/client.crt)"
+        export SERVER_PRIVATE_KEY_FILE=/certs/server-d.key
+        export SERVER_PUBLIC_CERT_FILE=/certs/server-d.crt
+        export CLIENT_PUBLIC_KEY_FILE=/certs/client.crt
         export SSL=server
         export BACKEND_PORT_13001_TCP=tcp://backend:5000
         exec /usr/bin/entrypoint.sh
@@ -209,8 +209,9 @@ services:
       - -c
       - |
         while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
-        export CLIENT_PRIVATE_KEY="$(cat /certs/client.pem)"
-        export SERVER_PUBLIC_KEY="$(cat /certs/server-d.crt)"
+        export CLIENT_PRIVATE_KEY_FILE=/certs/client.key
+        export CLIENT_PUBLIC_CERT_FILE=/certs/client.crt
+        export SERVER_PUBLIC_KEY_FILE=/certs/server-d.crt
         export SSL=client
         export SERVERD_PORT_13000_TCP=tcp://server-d:13001
         exec /usr/bin/entrypoint.sh
