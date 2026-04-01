@@ -1,0 +1,303 @@
+# Please see docs/TESTING.md for additional information.
+#
+# Topology:
+#
+#   sut ──► client-a:7000 ──────────────────────────────────────────────────► backend:5000  (A: plain TCP)
+#   sut ──► client-b:11000 ────[TLS, no verify]────► server-b:11001 ────────► backend:5000  (B: auto-cert)
+#   sut ──► client-c:12000 ────[TLS, verify srv]───► server-c:12001 ────────► backend:5000  (C: server auth)
+#   sut ──► client-d:13000 ────[TLS, mutual]───────► server-d:13001 ────────► backend:5000  (D: mutual auth)
+#
+# The bootloader generates a server cert+key pair and a client cert+key pair,
+# then signals readiness via /certs/ready.  Services that need specific certs
+# wait for /certs/ready before exec-ing the ambassador entrypoint.
+
+services:
+  # ── bootloader ────────────────────────────────────────────────────────────
+  # Generates server and client cert/key pairs, writes them to the shared
+  # "certs" volume, then sleeps to stay alive for the duration of the test.
+  # Using sleep 300 as a test timeout; dumb-init is not available in the sut
+  # image so SIGTERM from docker compose will terminate it directly.
+  bootloader:
+    build:
+      context: .
+      dockerfile: Dockerfile.sut
+    hostname: bootloader
+    command:
+      - /bin/sh
+      - -c
+      - |
+        # Scenario B uses auto-generated certs; no certs needed from here.
+        #
+        # Scenarios C and D need provided certs. Socat's verify=1 on the client
+        # side checks that the server cert's CN matches the hostname the client
+        # connected to. Generate one server cert per server service so the CN
+        # exactly matches the Docker service name used in the _TCP= env var.
+        openssl req -nodes -new -x509 -days 3650 \
+          -keyout /certs/server-c.key \
+          -out    /certs/server-c.crt \
+          -subj   "/C=NO/ST=None/L=None/O=Test/OU=Server/CN=server-c" \
+          2>/dev/null
+        cat /certs/server-c.key /certs/server-c.crt > /certs/server-c.pem
+        openssl req -nodes -new -x509 -days 3650 \
+          -keyout /certs/server-d.key \
+          -out    /certs/server-d.crt \
+          -subj   "/C=NO/ST=None/L=None/O=Test/OU=Server/CN=server-d" \
+          2>/dev/null
+        cat /certs/server-d.key /certs/server-d.crt > /certs/server-d.pem
+        openssl req -nodes -new -x509 -days 3650 \
+          -keyout /certs/client.key \
+          -out    /certs/client.crt \
+          -subj   "/C=NO/ST=None/L=None/O=Test/OU=Client/CN=client-ambassador" \
+          2>/dev/null
+        cat /certs/client.key /certs/client.crt > /certs/client.pem
+        chmod 600 /certs/*.pem /certs/*.key
+        touch /certs/ready
+        echo "[INFO ] certs generated"
+        sleep 300
+        exit 1
+    volumes:
+      - certs:/certs
+
+  # ── backend ───────────────────────────────────────────────────────────────
+  # A simple socat echo server.  All four ambassador scenarios proxy back to
+  # this service.  It echoes whatever it receives back to the sender, then
+  # closes the connection when the sender closes.
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.sut
+    hostname: backend
+    command: socat TCP-LISTEN:5000,fork,reuseaddr EXEC:'cat'
+    networks:
+      - testnet
+
+  # ── Scenario A: plain TCP proxy (no SSL) ──────────────────────────────────
+  # A single ambassador relays plain TCP from port 7000 to backend:5000.
+  # No SSL env vars are set.
+  client-a:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: client-a
+    environment:
+      - BACKEND_PORT_7000_TCP=tcp://backend:5000
+    depends_on:
+      - backend
+    networks:
+      - testnet
+
+  # ── Scenario B: SSL, auto-generated certs, no peer verification ───────────
+  # server-b: SSL=server, no SERVER_PRIVATE_KEY (auto-generates), no
+  #   CLIENT_PUBLIC_KEY (verify=0 on server side).
+  # client-b: SSL=client, no CLIENT_PRIVATE_KEY (auto-generates), no
+  #   SERVER_PUBLIC_KEY (verify=0 on client side).
+  # Both sides encrypt but neither authenticates the peer.
+  server-b:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: server-b
+    environment:
+      - BACKEND_PORT_11001_TCP=tcp://backend:5000
+      - SSL=server
+    depends_on:
+      - backend
+    networks:
+      - testnet
+
+  client-b:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: client-b
+    environment:
+      - SERVERB_PORT_11000_TCP=tcp://server-b:11001
+      - SSL=client
+    depends_on:
+      - server-b
+    networks:
+      - testnet
+
+  # ── Scenario C: SSL, server authentication only ───────────────────────────
+  # server-c: SSL=server, SERVER_PRIVATE_KEY from bootloader (provided cert),
+  #   no CLIENT_PUBLIC_KEY (client does not need to present a cert).
+  # client-c: SSL=client, CLIENT_PRIVATE_KEY from bootloader, SERVER_PUBLIC_KEY
+  #   from bootloader so the client can verify the server's cert.
+  # The client authenticates the server; the server does not authenticate the
+  # client.
+  server-c:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: server-c
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
+        export SERVER_PRIVATE_KEY="$(cat /certs/server-c.pem)"
+        export SSL=server
+        export BACKEND_PORT_12001_TCP=tcp://backend:5000
+        exec /usr/bin/entrypoint.sh
+    volumes:
+      - certs:/certs
+    depends_on:
+      - bootloader
+      - backend
+    networks:
+      - testnet
+
+  client-c:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: client-c
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
+        export CLIENT_PRIVATE_KEY="$(cat /certs/client.pem)"
+        export SERVER_PUBLIC_KEY="$(cat /certs/server-c.crt)"
+        export SSL=client
+        export SERVERC_PORT_12000_TCP=tcp://server-c:12001
+        exec /usr/bin/entrypoint.sh
+    volumes:
+      - certs:/certs
+    depends_on:
+      - bootloader
+      - server-c
+    networks:
+      - testnet
+
+  # ── Scenario D: SSL, mutual authentication ────────────────────────────────
+  # server-d: SSL=server, SERVER_PRIVATE_KEY from bootloader, CLIENT_PUBLIC_KEY
+  #   from bootloader so the server can verify the client's cert (verify=1).
+  # client-d: SSL=client, CLIENT_PRIVATE_KEY from bootloader, SERVER_PUBLIC_KEY
+  #   from bootloader so the client can verify the server's cert (verify=1).
+  # Both sides present and verify certificates.
+  server-d:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: server-d
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
+        export SERVER_PRIVATE_KEY="$(cat /certs/server-d.pem)"
+        export CLIENT_PUBLIC_KEY="$(cat /certs/client.crt)"
+        export SSL=server
+        export BACKEND_PORT_13001_TCP=tcp://backend:5000
+        exec /usr/bin/entrypoint.sh
+    volumes:
+      - certs:/certs
+    depends_on:
+      - bootloader
+      - backend
+    networks:
+      - testnet
+
+  client-d:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: client-d
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while [ ! -f /certs/ready ]; do echo "[INFO ] waiting for certs..."; sleep 1; done
+        export CLIENT_PRIVATE_KEY="$(cat /certs/client.pem)"
+        export SERVER_PUBLIC_KEY="$(cat /certs/server-d.crt)"
+        export SSL=client
+        export SERVERD_PORT_13000_TCP=tcp://server-d:13001
+        exec /usr/bin/entrypoint.sh
+    volumes:
+      - certs:/certs
+    depends_on:
+      - bootloader
+      - server-d
+    networks:
+      - testnet
+
+  # ── sut (system under test) ───────────────────────────────────────────────
+  # Waits for each ambassador to open its listen port, then sends a test string
+  # through each scenario and asserts it echoes back unchanged.
+  # Exits 0 on full success; exits non-zero and prints [PANIC] on first failure.
+  sut:
+    build:
+      context: .
+      dockerfile: Dockerfile.sut
+    hostname: sut
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        # ── wait for all ambassador listen ports ──────────────────────────────
+        # Server-side ports must be ready before client-side socat can relay
+        # through them; waiting only for client ports risks a race on first use.
+        while ! nc -z client-a    7000;  do echo "[INFO ] waiting for client-a:7000...";      sleep 2; done
+        while ! nc -z server-b    11001; do echo "[INFO ] waiting for server-b:11001...";    sleep 2; done
+        while ! nc -z client-b    11000; do echo "[INFO ] waiting for client-b:11000...";    sleep 2; done
+        while ! nc -z server-c    12001; do echo "[INFO ] waiting for server-c:12001...";    sleep 2; done
+        while ! nc -z client-c    12000; do echo "[INFO ] waiting for client-c:12000...";    sleep 2; done
+        while ! nc -z server-d    13001; do echo "[INFO ] waiting for server-d:13001...";    sleep 2; done
+        while ! nc -z client-d    13000; do echo "[INFO ] waiting for client-d:13000...";    sleep 2; done
+
+        # ── scenario A: plain TCP ─────────────────────────────────────────────
+        result=$$(echo "scenario-a" | socat - TCP:client-a:7000)
+            if [ "$$result" = "scenario-a" ]; then
+          echo "[INFO ] scenario-a (plain TCP) PASS"
+        else
+          echo "[PANIC] scenario-a (plain TCP) FAIL — got: $$result"
+          exit 1
+        fi
+
+        # ── scenario B: SSL, auto-cert, no peer verification ─────────────────
+        result=$$(echo "scenario-b" | socat - TCP:client-b:11000)
+        if [ "$$result" = "scenario-b" ]; then
+          echo "[INFO ] scenario-b (SSL auto-cert, no auth) PASS"
+        else
+          echo "[PANIC] scenario-b (SSL auto-cert, no auth) FAIL — got: $$result"
+          exit 2
+        fi
+
+        # ── scenario C: SSL, client verifies server cert ──────────────────────
+        result=$$(echo "scenario-c" | socat - TCP:client-c:12000)
+        if [ "$$result" = "scenario-c" ]; then
+          echo "[INFO ] scenario-c (SSL server auth) PASS"
+        else
+          echo "[PANIC] scenario-c (SSL server auth) FAIL — got: $$result"
+          exit 3
+        fi
+
+        # ── scenario D: SSL, mutual authentication ────────────────────────────
+        result=$$(echo "scenario-d" | socat - TCP:client-d:13000)
+        if [ "$$result" = "scenario-d" ]; then
+          echo "[INFO ] scenario-d (SSL mutual auth) PASS"
+        else
+          echo "[PANIC] scenario-d (SSL mutual auth) FAIL — got: $$result"
+          exit 4
+        fi
+
+        echo "[INFO ] all scenarios passed"
+        exit 0
+    depends_on:
+      - client-a
+      - server-b
+      - client-b
+      - server-c
+      - client-c
+      - server-d
+      - client-d
+    networks:
+      - testnet
+
+networks:
+  testnet:
+    driver: bridge
+
+volumes:
+  certs: {}
