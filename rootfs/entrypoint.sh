@@ -6,7 +6,7 @@ if [ "$SSL" ]; then
       echo "$SERVER_PRIVATE_KEY" > /etc/server.pem
     else
       echo "[WARN] Generating new keys..."
-      openssl req -nodes -new -x509 -keyout /etc/server.key -out /etc/server.crt -subj "/C=NO/ST=None/L=None/O=Testing/OU=Server/CN=server.jnovack-ambassador.local/emailAddress=server@jnovack-ambassador.local" &> /dev/null
+      openssl req -nodes -new -x509 -keyout /etc/server.key -out /etc/server.crt -subj "/C=NO/ST=None/L=None/O=Testing/OU=Server/CN=server.ambassador.local/emailAddress=server@ambassador.local" &> /dev/null
       cat /etc/server.key /etc/server.crt > /etc/server.pem
       rm /etc/server.key
     fi
@@ -19,7 +19,7 @@ if [ "$SSL" ]; then
       echo "$CLIENT_PRIVATE_KEY" > /etc/client.pem
     else
       echo "[WARN] Generating new keys..."
-      openssl req -nodes -new -x509 -keyout /etc/client.key -out /etc/client.crt -subj "/C=NO/ST=None/L=None/O=Testing/OU=Client/CN=client.jnovack-ambassador.local/emailAddress=client@jnovack-ambassador.local" &> /dev/null
+      openssl req -nodes -new -x509 -keyout /etc/client.key -out /etc/client.crt -subj "/C=NO/ST=None/L=None/O=Testing/OU=Client/CN=client.ambassador.local/emailAddress=client@ambassador.local" &> /dev/null
       cat /etc/client.key /etc/client.crt > /etc/client.pem
       rm /etc/client.key
     fi
