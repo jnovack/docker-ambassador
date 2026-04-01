@@ -33,6 +33,7 @@ else
   echo "[WARN] SSL is NOT enabled"
 fi
 
+mkdir -p /etc/supervisor.d/
 env | grep _TCP= | while read line; do
   name=$(echo $line | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat_\1/')
 
@@ -65,7 +66,6 @@ env | grep _TCP= | while read line; do
     fi
   fi
 
-  mkdir /etc/supervisor.d/
   cat <<EOF >> /etc/supervisor.d/socat.ini
 [program:$name]
 command=$cmd
