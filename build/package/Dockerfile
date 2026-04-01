@@ -1,5 +1,5 @@
-FROM alpine:3.5
-MAINTAINER Justin J. Novack <jnovack@gmail.com>
+FROM alpine:3.21
+LABEL maintainer="Justin J. Novack <jnovack@gmail.com>"
 
 ENTRYPOINT ["/usr/bin/entrypoint.sh"]
 
