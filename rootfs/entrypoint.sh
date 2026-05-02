@@ -106,6 +106,12 @@ fi
 mkdir -p /etc/supervisor.d/
 env | grep _TCP= | while read -r line; do
   name=$(echo "$line" | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat_\1/')
+  case "$name" in
+    ''|*[!a-zA-Z0-9_]*)
+      echo "[FATAL] Invalid supervisor section name '$name' — env var must follow NAME_PORT_<port>_TCP=tcp://host:port." >&2
+      exit 1
+      ;;
+  esac
 
   if [ -z "$SSL" ]; then
     echo "[INFO] Initiating socat socket..."
@@ -150,7 +156,6 @@ stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 autostart=true
 autorestart=true
-
 EOF
 done
 

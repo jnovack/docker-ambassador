@@ -352,6 +352,33 @@ services:
     networks:
       - testnet
 
+
+  # ── Scenario G: INI injection validation ─────────────────────────────────
+  # Sets an env var that passes grep _TCP= but fails the sed substitution,
+  # producing a name that contains '=' and '/' — definitively not
+  # [a-zA-Z0-9_]+.  The entrypoint must exit with [FATAL] before writing
+  # any supervisor config.
+  inject:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: inject
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        /usr/bin/entrypoint.sh > /warn/inject.log 2>&1 || true
+        sleep 300
+        exit 1
+    environment:
+      - HACK_TCP=tcp://backend:5000
+    volumes:
+      - warn:/warn
+    depends_on:
+      - backend
+    networks:
+      - testnet
+
   # ── sut (system under test) ───────────────────────────────────────────────
   # Waits for each ambassador to open its listen port, then sends a test string
   # through each scenario and asserts it echoes back unchanged.
@@ -439,6 +466,14 @@ services:
           exit 7
         fi
 
+        # ── scenario G: INI injection blocked ────────────────────────────────
+        if grep -qF "[FATAL]" /warn/inject.log; then
+          echo "[INFO ] scenario-g (INI injection blocked) PASS"
+        else
+          echo "[PANIC] scenario-g (INI injection blocked) FAIL — FATAL not found"
+          exit 8
+        fi
+
         echo "[INFO ] all scenarios passed"
         exit 0
     depends_on:
@@ -453,6 +488,7 @@ services:
       - client-e
       - warn-server
       - warn-client
+      - inject
     volumes:
       - warn:/warn
     networks:
