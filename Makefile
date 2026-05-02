@@ -23,5 +23,5 @@ docker-down:
 docker-up:
 	docker compose -f test/docker-compose.test.yml up
 
-docker-test: docker-nuke
+test: docker-nuke
 	docker compose -f test/docker-compose.test.yml up --exit-code-from sut

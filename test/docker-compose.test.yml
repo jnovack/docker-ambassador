@@ -304,6 +304,54 @@ services:
     networks:
       - testnet
 
+  # ── Scenario F: verify=0 warning check ───────────────────────────────────
+  # These services exist solely to capture entrypoint startup output to a
+  # shared volume so the sut can assert the prominent security warning appears.
+  # They do not listen on any port; the sut does not connect to them.
+  warn-server:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: warn-server
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        /usr/bin/entrypoint.sh > /warn/server.log 2>&1 &
+        sleep 300
+        exit 1
+    environment:
+      - SSL=server
+      - FAKE_PORT_9999_TCP=tcp://backend:5000
+    volumes:
+      - warn:/warn
+    depends_on:
+      - backend
+    networks:
+      - testnet
+
+  warn-client:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: warn-client
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        /usr/bin/entrypoint.sh > /warn/client.log 2>&1 &
+        sleep 300
+        exit 1
+    environment:
+      - SSL=client
+      - FAKE_PORT_9999_TCP=tcp://backend:5000
+    volumes:
+      - warn:/warn
+    depends_on:
+      - backend
+    networks:
+      - testnet
+
   # ── sut (system under test) ───────────────────────────────────────────────
   # Waits for each ambassador to open its listen port, then sends a test string
   # through each scenario and asserts it echoes back unchanged.
@@ -375,6 +423,22 @@ services:
           exit 5
         fi
 
+        # ── scenario F: verify=0 security warning present ────────────────────
+        # warn-server and warn-client wrote their startup output to /warn/*.log
+        # before exiting; grep confirms the prominent warning block is present.
+        if grep -q "SECURITY WARNING" /warn/server.log; then
+          echo "[INFO ] scenario-f (server verify=0 warning) PASS"
+        else
+          echo "[PANIC] scenario-f (server verify=0 warning) FAIL — warning not found"
+          exit 6
+        fi
+        if grep -q "SECURITY WARNING" /warn/client.log; then
+          echo "[INFO ] scenario-f (client verify=0 warning) PASS"
+        else
+          echo "[PANIC] scenario-f (client verify=0 warning) FAIL — warning not found"
+          exit 7
+        fi
+
         echo "[INFO ] all scenarios passed"
         exit 0
     depends_on:
@@ -387,6 +451,10 @@ services:
       - client-d
       - server-e
       - client-e
+      - warn-server
+      - warn-client
+    volumes:
+      - warn:/warn
     networks:
       - testnet
 
@@ -396,3 +464,4 @@ networks:
 
 volumes:
   certs: {}
+  warn: {}

@@ -55,10 +55,8 @@ if [ "$SSL" ]; then
       rm -f /tmp/server.key
     fi
     chmod 600 /etc/server.pem
-    echo
     echo ":: server.crt ::"
     cat /etc/server.crt
-    echo
 
     # Optional: CA cert used to verify the connecting client (mutual auth)
     if is_provided CLIENT_PUBLIC_KEY CLIENT_PUBLIC_KEY_FILE; then
@@ -92,10 +90,8 @@ if [ "$SSL" ]; then
       rm -f /tmp/client.key
     fi
     chmod 600 /etc/client.pem
-    echo
     echo ":: client.crt ::"
     cat /etc/client.crt
-    echo
 
     # Optional: CA cert used to verify the server (server auth)
     if is_provided SERVER_PUBLIC_KEY SERVER_PUBLIC_KEY_FILE; then
@@ -121,7 +117,11 @@ env | grep _TCP= | while read -r line; do
         echo "[INFO] ...server is VERIFYING certificates"
         cmd=$(echo "$line" | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -d -d OPENSSL-LISTEN:\1,fork,reuseaddr,cert=\/etc\/server.pem,cafile=\/etc\/client.crt,verify=1 TCP4:\2:\3/')
       else
-        echo "[WARN] ...server is NOT verifying certificates"
+        echo "[WARN ] ============================================================"
+        echo "[WARN ] SECURITY WARNING: SSL=server connection is ENCRYPTED but"
+        echo "[WARN ] NOT AUTHENTICATED. MITM attacks are possible."
+        echo "[WARN ] Provide CLIENT_PUBLIC_KEY[_FILE] to enable authentication."
+        echo "[WARN ] ============================================================"
         cmd=$(echo "$line" | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -d -d OPENSSL-LISTEN:\1,fork,reuseaddr,cert=\/etc\/server.pem,verify=0 TCP4:\2:\3/')
       fi
     else
@@ -130,7 +130,11 @@ env | grep _TCP= | while read -r line; do
         echo "[INFO] ...client is VERIFYING certificates"
         cmd=$(echo "$line" | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -d -d TCP-LISTEN:\1,reuseaddr,fork OPENSSL:\2:\3,cert=\/etc\/client.pem,cafile=\/etc\/server.crt,verify=1/')
       else
-        echo "[WARN] ...client is NOT verifying certificates"
+        echo "[WARN ] ============================================================"
+        echo "[WARN ] SECURITY WARNING: SSL=client connection is ENCRYPTED but"
+        echo "[WARN ] NOT AUTHENTICATED. MITM attacks are possible."
+        echo "[WARN ] Provide SERVER_PUBLIC_KEY[_FILE] to enable authentication."
+        echo "[WARN ] ============================================================"
         cmd=$(echo "$line" | sed -e 's/.*_PORT_\([0-9]*\)_TCP=tcp:\/\/\(.*\):\(.*\)/socat -d -d TCP-LISTEN:\1,reuseaddr,fork OPENSSL:\2:\3,cert=\/etc\/client.pem,verify=0/')
       fi
     fi
@@ -150,10 +154,7 @@ autorestart=true
 EOF
 done
 
-echo
 echo ":: socat.ini ::"
 echo "---------------"
 [ -f /etc/supervisor.d/socat.ini ] && cat /etc/supervisor.d/socat.ini
-
-echo
 exec supervisord -n -c /etc/supervisord.conf
