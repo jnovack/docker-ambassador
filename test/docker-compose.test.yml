@@ -352,6 +352,36 @@ services:
     networks:
       - testnet
 
+  # ── Scenario H: CERT_CN respected in auto-generated certificate ──────────
+  # Runs the server auto-gen path with CERT_CN=test-cn-host.  After the
+  # entrypoint generates the cert, appends the subject and SAN extension
+  # to the warn log so the sut can assert without needing a docker socket.
+  cert-cn:
+    build:
+      context: ../
+      dockerfile: build/package/Dockerfile
+    hostname: cert-cn
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        /usr/bin/entrypoint.sh > /warn/cert-cn.log 2>&1 &
+        while ! grep -q ':: server.crt' /warn/cert-cn.log 2>/dev/null; do sleep 1; done
+        openssl x509 -noout -subject -in /etc/server.crt > /warn/cert-cn-subject.txt 2>&1
+        openssl x509 -noout -ext subjectAltName -in /etc/server.crt > /warn/cert-cn-san.txt 2>&1
+        touch /warn/cert-cn.ready
+        sleep 300
+        exit 1
+    environment:
+      - SSL=server
+      - CERT_CN=test-cn-host
+      - FAKE_PORT_9999_TCP=tcp://backend:5000
+    volumes:
+      - warn:/warn
+    depends_on:
+      - backend
+    networks:
+      - testnet
 
   # ── Scenario G: INI injection validation ─────────────────────────────────
   # Sets an env var that passes grep _TCP= but fails the sed substitution,
@@ -466,6 +496,21 @@ services:
           exit 7
         fi
 
+        # ── scenario H: CERT_CN respected in auto-generated certificate ─────
+        while [ ! -f /warn/cert-cn.ready ]; do echo "[INFO ] waiting for cert-cn..."; sleep 2; done
+        if grep -qF "CN=test-cn-host" /warn/cert-cn-subject.txt; then
+          echo "[INFO ] scenario-h (CERT_CN in subject CN) PASS"
+        else
+          echo "[PANIC] scenario-h (CERT_CN in subject CN) FAIL — CN not found"
+          exit 9
+        fi
+        if grep -qF "DNS:test-cn-host" /warn/cert-cn-san.txt; then
+          echo "[INFO ] scenario-h (CERT_CN in SAN) PASS"
+        else
+          echo "[PANIC] scenario-h (CERT_CN in SAN) FAIL — SAN not found"
+          exit 10
+        fi
+
         # ── scenario G: INI injection blocked ────────────────────────────────
         if grep -qF "[FATAL]" /warn/inject.log; then
           echo "[INFO ] scenario-g (INI injection blocked) PASS"
@@ -488,6 +533,7 @@ services:
       - client-e
       - warn-server
       - warn-client
+      - cert-cn
       - inject
     volumes:
       - warn:/warn

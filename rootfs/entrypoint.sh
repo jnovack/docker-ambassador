@@ -47,9 +47,11 @@ if [ "$SSL" ]; then
       rm -f /tmp/server.key
     else
       echo "[WARN ] No server key/cert provided — generating a self-signed certificate."
+      _cert_cn="${CERT_CN:-server.ambassador.local}"
       openssl req -nodes -new -x509 \
         -keyout /tmp/server.key -out /etc/server.crt \
-        -subj "/C=NO/ST=None/L=None/O=Testing/OU=Server/CN=server.ambassador.local" \
+        -subj "/C=NO/ST=None/L=None/O=Testing/OU=Server/CN=${_cert_cn}" \
+        -addext "subjectAltName=DNS:${_cert_cn}" \
         2>/dev/null
       cat /tmp/server.key /etc/server.crt > /etc/server.pem
       rm -f /tmp/server.key
@@ -82,9 +84,11 @@ if [ "$SSL" ]; then
       rm -f /tmp/client.key
     else
       echo "[WARN ] No client key/cert provided — generating a self-signed certificate."
+      _cert_cn="${CERT_CN:-client.ambassador.local}"
       openssl req -nodes -new -x509 \
         -keyout /tmp/client.key -out /etc/client.crt \
-        -subj "/C=NO/ST=None/L=None/O=Testing/OU=Client/CN=client.ambassador.local" \
+        -subj "/C=NO/ST=None/L=None/O=Testing/OU=Client/CN=${_cert_cn}" \
+        -addext "subjectAltName=DNS:${_cert_cn}" \
         2>/dev/null
       cat /tmp/client.key /etc/client.crt > /etc/client.pem
       rm -f /tmp/client.key
